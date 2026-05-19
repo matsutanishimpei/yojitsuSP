@@ -13,10 +13,7 @@ jobs:
       - run: npm ci
       # バックエンドのデプロイ
       - name: Deploy API
-        uses: cloudflare/wrangler-action@v3
-        with:
-          command: deploy
-          workingDirectory: 'packages/backend'
+        run: npm run deploy -w packages/backend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -34,9 +31,7 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
       - name: Deploy Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          command: pages deploy packages/frontend/dist --project-name=yojitsu-sp
+        run: npx wrangler pages deploy packages/frontend/dist --project-name=yojitsu-sp
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
