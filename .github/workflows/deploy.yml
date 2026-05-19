@@ -31,10 +31,12 @@ jobs:
       - run: npm ci
       # フロントエンドのビルドとデプロイ
       - run: npm run build -w packages/frontend
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
         with:
-          command: pages deploy packages/frontend/dist --project-name=あなたのプロジェクト名
+          command: pages deploy packages/frontend/dist --project-name=yojitsu-sp
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

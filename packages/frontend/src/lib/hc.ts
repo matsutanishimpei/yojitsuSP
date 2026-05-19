@@ -1,8 +1,7 @@
 import { hc } from 'hono/client';
 import type { AppType } from '@my-app/backend';
 
-// Use the current origin for the client, assuming Vite proxy in dev
-// and same-domain in production.
-const client = hc<AppType>('/');
+const baseUrl = (import.meta.env.VITE_API_URL as string) || '/';
+const client = hc<AppType>(baseUrl);
 
 export default client;

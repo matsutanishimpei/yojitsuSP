@@ -8,7 +8,8 @@
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "types": ["vite/client", "@cloudflare/workers-types"]
   },
   "include": ["src"]
 }

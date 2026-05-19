@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "lib": ["ESNext", "DOM"],
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@my-app/shared": ["./packages/shared/src/index.ts"],
