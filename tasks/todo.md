@@ -8,6 +8,7 @@
   - [x] Configure `wrangler.toml` in `packages/backend/` with D1 binding and local environment vars
   - [x] Create initial migration under `packages/backend/migrations/0001_initial_schema.sql`
   - [x] Apply migration locally using wrangler
+  - [x] Apply migration to remote production D1 database (`yojitsu-db`)
 - [x] Implement backend API Endpoints in `packages/backend/src/index.ts`
   - [x] Set up basic routing and D1 database binding type definition
   - [x] Implement `POST /login`
@@ -20,16 +21,19 @@
   - [x] Implement `DELETE /admin/students/:id`
   - [x] Implement `GET /admin/templates` & `POST /admin/templates`
   - [x] Implement `POST /admin/send-email` (GAS Integration)
+  - [x] Add CORS middleware support for cross-domain requests
   - [x] Add unified error handling middleware
-- [ ] Implement Frontend React UI
-  - [ ] Set up Design System and tokens in CSS (Warm Minimalism)
-  - [ ] Build Login Page / view
-  - [ ] Build Kanban view (Student & Read-Only / Teacher mode)
-  - [ ] Build Admin Views
-    - [ ] Students List
-    - [ ] Company Matrix
-    - [ ] Email Sending Form (with student status analyzer)
-    - [ ] Email Settings & Templates Editor
-- [ ] Perform testing & verification (DoD check)
-  - [ ] Verify build and type safety
-  - [ ] Run manual browser testing to check UI/UX flow
+- [x] Implement Frontend React UI
+  - [x] Set up Design System and tokens in CSS (Warm Minimalism)
+  - [x] Build Login Page / view
+  - [x] Build Kanban view (Student & Read-Only / Teacher mode)
+  - [x] Build Admin Views
+    - [x] Students List
+    - [x] Company Matrix
+    - [x] Email Sending Form (with student status analyzer)
+    - [x] Email Settings & Templates Editor
+  - [x] Add `/hello` Connectivity Check page
+- [x] Perform testing & verification (DoD check)
+  - [x] Verify build and type safety (`npm run typecheck`, `npm run build`)
+  - [x] Run manual browser testing to check UI/UX flow
+  - [x] Verify remote production deployment on Cloudflare (Pages & Workers)
