@@ -1,0 +1,35 @@
+# Yojitsu Job Hunting Management System - Implementation Tasks
+
+- [x] Define Zod schemas and TypeScript types in `packages/shared/`
+  - [x] `packages/shared/src/schemas/index.ts` (validation rules)
+  - [x] `packages/shared/src/types/index.ts` (extracted types)
+  - [x] Re-export everything from `packages/shared/src/index.ts`
+- [x] Set up D1 Database Configuration & Initial Migration
+  - [x] Configure `wrangler.toml` in `packages/backend/` with D1 binding and local environment vars
+  - [x] Create initial migration under `packages/backend/migrations/0001_initial_schema.sql`
+  - [x] Apply migration locally using wrangler
+- [x] Implement backend API Endpoints in `packages/backend/src/index.ts`
+  - [x] Set up basic routing and D1 database binding type definition
+  - [x] Implement `POST /login`
+  - [x] Implement `GET /search` (gBizINFO API proxy or mock if API key isn't provided)
+  - [x] Implement `GET /cards` & `POST /cards` & `PATCH /cards/:id`
+  - [x] Implement `GET /admin/students`
+  - [x] Implement `GET /admin/matrix`
+  - [x] Implement `POST /admin/students/bulk`
+  - [x] Implement `PATCH /admin/students/:id`
+  - [x] Implement `DELETE /admin/students/:id`
+  - [x] Implement `GET /admin/templates` & `POST /admin/templates`
+  - [x] Implement `POST /admin/send-email` (GAS Integration)
+  - [x] Add unified error handling middleware
+- [ ] Implement Frontend React UI
+  - [ ] Set up Design System and tokens in CSS (Warm Minimalism)
+  - [ ] Build Login Page / view
+  - [ ] Build Kanban view (Student & Read-Only / Teacher mode)
+  - [ ] Build Admin Views
+    - [ ] Students List
+    - [ ] Company Matrix
+    - [ ] Email Sending Form (with student status analyzer)
+    - [ ] Email Settings & Templates Editor
+- [ ] Perform testing & verification (DoD check)
+  - [ ] Verify build and type safety
+  - [ ] Run manual browser testing to check UI/UX flow
