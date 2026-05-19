@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from '
 import { LoginView } from './components/LoginView';
 import { KanbanView } from './components/KanbanView';
 import { AdminDashboard } from './components/AdminDashboard';
+import { HelloView } from './components/HelloView';
 import client from './lib/hc';
 import './index.css';
 
@@ -95,6 +96,9 @@ const AppRoutes = ({
 }) => {
   return (
     <Routes>
+      {/* Hello Connection Check Route */}
+      <Route path="/hello" element={<HelloView />} />
+
       {/* Login Route */}
       <Route
         path="/login"
