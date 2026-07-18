@@ -3,6 +3,10 @@ name = "yojitsu-sp-backend"
 main = "src/index.ts"
 compatibility_date = "2024-04-03"
 
+[vars]
+# Public configuration. Keep JWT_SECRET and other credentials in Worker Secrets.
+ALLOWED_ORIGIN = "https://yojitsu-sp.pages.dev"
+
 [triggers]
 # 09:00 and 21:00 JST. Synchronization is strictly SOURCE_DB -> DB.
 crons = ["0 0,12 * * *"]
