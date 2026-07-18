@@ -34,7 +34,7 @@ React / Cloudflare Pages ── Cloudflare Workers
 
 ## 開発
 
-Node.js 20を使用します。
+Node.js 22以上を使用します。
 
 ```bash
 npm install
