@@ -1,99 +1,88 @@
-# Yojitsu 就活状況管理システム (Yojitsu Job Hunting Management System)
+# Yojitsu SP
 
-電子専門学校のクラス担任教員が、学生の就職活動状況をリアルタイムに把握し、円滑な指導と保護者連携を行うための型安全なフルスタックWebアプリケーションです。
+専門学校の就職活動状況を、学生と教員が管理するWebアプリケーションです。
 
----
+既存の `yojitsu-app` は原本データの提供元として維持し、Yojitsu SPは専用DBで詳細な状態を管理します。SPからappのDBへ書き込む処理はありません。
 
-## 🎨 デザインコンセプト: Warm Minimalism
+## 現在の構成
 
-「ツールに使わされている」という圧迫感を排除し、長時間使用しても疲れない自然で心地よいUI/UXを提供します。
-* **カラーパレット:** 真っ白・真っ黒を避け、紙とインクのような温かみのある Stone 系のカラー（オフホワイト、ダークグレー）を採用。
-* **余白の美学:** 情報が混雑しないよう十分な余白（Whitespace）を確保。
-* **手触り感:** ボタンのホバー、カードのドラッグ、モーダルの表示など、すべての遷移に滑らかな transition を適用。
-
----
-
-## 🚀 主な機能
-
-### 1. 管理者ダッシュボード（教員用画面）
-* **全体サマリー:** クラス全体の「選考中」「内定」「終了」の件数を一目で把握可能。
-* **学生一覧＆詳細アコーディオン:**
-  * 各学生の現在の活動数と最終更新日時をリスト表示。
-  * 行をクリックすると、アコーディオン形式で受験企業・選考職種・詳細なステップ履歴・メモがすっきりと展開されます。
-* **高度な検索とフィルタリング:**
-  * 学生名や学籍番号での絞り込み。
-  * 「選考ステップ（説明会 / ES・履歴書 / 適性検査 / 1次面接 / 2次面接 / 最終面接 / 面談）」による絞り込みに対応し、「1次面接で停滞している学生」などを瞬時に特定可能。
-* **メール下書き自動生成＆送信:**
-  * D1データベースから動的に読み込まれたテンプレート（本人用・保護者用）を使用し、学生個別の選考リストや件数をプレースホルダーへ自動置換。
-  * Gmail等の送信確認用ポップアップへのスムーズな連携。
-* **CSV一括インポート:**
-  * 新年度やクラス替えの際、学生データ（学籍番号、氏名、初期ログイン用データ）をCSVファイルドラッグ＆ドロップまたは直接入力で一括登録可能。
-
-### 2. 学生ダッシュボード
-* **カンバンボードによる進捗管理:**
-  * 「予定」「選考中」「内定」「終了」の4カラムで、ドラッグ＆ドロップによる直感的なステータス遷移。
-* **表記ゆれ防止（入力制限）:**
-  * 選考ステップ追加時の入力ミス・揺らぎを防ぐため、ステップ名はトグルボタン（説明会、ES・履歴書、適性検査、1次面接、2次面接、最終面接、面談）からの選択に制限。
-* **自動ステータス遷移（ライフサイクル連動）:**
-  * 「不合格」または「辞退」を入力した時点で、カードは自動的に **「終了」** 列へ移動します。
-  * 「最終面接」で「合格」を入力した時点で、カードは自動的に **「内定」** 列へ移動します。
-
----
-
-## 🛠 技術スタック
-
-* **コア・パッケージ構成 (npm workspaces モノレポ)**
-  * `packages/frontend/` (Vite + React)
-  * `packages/backend/` (Hono API + Cloudflare Workers)
-  * `packages/shared/` (Zod validation & Types)
-
-### 型の源泉 (Single Source of Truth)
-Zod スキーマ（`packages/shared`）を唯一の真実の型定義と位置付け、クライアントサイドのフォーム・バリデーションからサーバーサイドのリクエスト・検証、さらには D1 のデータ不変条件まで、型安全な接続を Hono RPC クライアント (`hc`) で実現しています。
-
----
-
-## 📦 開発手順
-
-### 1. 依存関係のインストール
-ルートディレクトリで実行します：
-```bash
-npm install
+```text
+yojitsu-app D1（原本・参照専用）
+          │ 09:00 / 21:00 JSTに同期
+          ▼
+Yojitsu SP D1（SPだけが更新）
+          ▲
+          │ API
+React / Cloudflare Pages ── Cloudflare Workers
 ```
 
-### 2. ローカル開発サーバーの起動
-同時に起動させることで、ローカルでの連携確認が行えます：
-```bash
-# Backend (Hono + Wrangler)
-npm run dev:backend
+- フロントエンド: React、Vite、TypeScript
+- API: Hono、Cloudflare Workers
+- DB: Cloudflare D1（app用とSP用を分離）
+- 認証: 学生・教員JWT（有効期間8時間）
+- 品質確認: TypeScript、Vitest、ローカルD1結合テスト、CSP検査、ビルド
 
-# Frontend (Vite + React)
+## データ保護の原則
+
+- `SOURCE_DB` は既存appのD1で、同期処理からは `SELECT` だけを許可します。
+- `DB` はSP専用の `yojitsu-sp-db` です。
+- app由来データへのSP独自変更はオーバーライド表に保存し、再同期後も維持します。
+- appで削除されたデータはSPで即時削除せず、削除日時を記録します。
+- SPからappへデータを戻す機能は実装しません。
+
+詳細は[DB移行・運用手順](doc/sp-database-migration.md)を参照してください。
+
+## 開発
+
+Node.js 20を使用します。
+
+```bash
+npm install
+npm run dev:backend
 npm run dev:frontend
 ```
 
-### 3. 静的型チェックの実行
-```bash
-npm run typecheck
-```
+ローカルのバックエンド設定は `packages/backend/.dev.vars.example` を参考に、`packages/backend/.dev.vars` を作成してください。秘密情報はGitへ登録しません。
 
----
-
-## 🗄️ データベースマイグレーション (Cloudflare D1)
-
-DBの変更が発生した場合は、手動で直接操作を行わず、必ずマイグレーション機能を使用してください。
+全確認は次の1コマンドです。
 
 ```bash
-# 1. マイグレーションファイルの作成
-npx wrangler d1 migrations create yojitsu-db <migration_name>
-
-# 2. ローカル環境への適用
-npx wrangler d1 migrations apply yojitsu-db --local
-
-# 3. リモート（本番）環境への適用
-npx wrangler d1 migrations apply yojitsu-db --remote
+npm run check
 ```
 
----
+このコマンドは型検査、単体テスト、D1結合テスト、CSP検査、バックエンド・フロントエンドのビルドを実行します。
 
-## 📄 ライセンス
+## D1マイグレーション
 
-このプロジェクトは [MIT License](LICENSE.md) のもとで公開されています。
+必ずSP専用DBにだけ適用します。`yojitsu-db` はappの原本なので、SP作業でマイグレーションを適用してはいけません。
+
+```bash
+# ローカル
+npx wrangler d1 migrations apply yojitsu-sp-db --local --config packages/backend/wrangler.toml
+
+# 本番SP DB
+npx wrangler d1 migrations apply yojitsu-sp-db --remote --config packages/backend/wrangler.toml
+```
+
+本番準備と初回同期は[DB移行・運用手順](doc/sp-database-migration.md)、GitHub Actionsの設定は[リモートデプロイ設定ガイド](リモートデプロイ設定ガイド.md)に従ってください。
+
+## ドキュメント
+
+- [ドキュメント一覧](doc/README.md)
+- [現行仕様](doc/specification.md)
+- [API仕様](doc/api.md)
+- [DB移行・同期・復旧](doc/sp-database-migration.md)
+- [実運用テストチェックリスト](doc/production-test-checklist.md)
+- [リモートデプロイ設定ガイド](リモートデプロイ設定ガイド.md)
+
+## 本番化の現在地
+
+コード上の品質確認、本番SP用D1の作成、migration適用、初回同期と件数照合まで完了しています。秘密情報設定と実運用テストが完了するまでデプロイを有効にしないでください。
+
+## 個人情報
+
+学生情報は個人情報です。ログ、SQLダンプ、画面キャプチャを外部公開しないでください。実名・学籍番号を含んでいた `doc/dump.sql` は作業ツリーから削除済みですが、過去にリモートへpush済みの場合はGit履歴削除の要否を確認してください。
+
+## License
+
+[MIT License](LICENSE.md)

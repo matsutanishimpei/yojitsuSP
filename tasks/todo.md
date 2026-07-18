@@ -1,39 +1,44 @@
-# Yojitsu Job Hunting Management System - Implementation Tasks
+# Yojitsu SP 残作業
 
-- [x] Define Zod schemas and TypeScript types in `packages/shared/`
-  - [x] `packages/shared/src/schemas/index.ts` (validation rules)
-  - [x] `packages/shared/src/types/index.ts` (extracted types)
-  - [x] Re-export everything from `packages/shared/src/index.ts`
-- [x] Set up D1 Database Configuration & Initial Migration
-  - [x] Configure `wrangler.toml` in `packages/backend/` with D1 binding and local environment vars
-  - [x] Create initial migration under `packages/backend/migrations/0001_initial_schema.sql`
-  - [x] Apply migration locally using wrangler
-  - [x] Apply migration to remote production D1 database (`yojitsu-db`)
-- [x] Implement backend API Endpoints in `packages/backend/src/index.ts`
-  - [x] Set up basic routing and D1 database binding type definition
-  - [x] Implement `POST /login`
-  - [x] Implement `GET /search` (gBizINFO API proxy or mock if API key isn't provided)
-  - [x] Implement `GET /cards` & `POST /cards` & `PATCH /cards/:id`
-  - [x] Implement `GET /admin/students`
-  - [x] Implement `GET /admin/matrix`
-  - [x] Implement `POST /admin/students/bulk`
-  - [x] Implement `PATCH /admin/students/:id`
-  - [x] Implement `DELETE /admin/students/:id`
-  - [x] Implement `GET /admin/templates` & `POST /admin/templates`
-  - [x] Implement `POST /admin/send-email` (GAS Integration)
-  - [x] Add CORS middleware support for cross-domain requests
-  - [x] Add unified error handling middleware
-- [x] Implement Frontend React UI
-  - [x] Set up Design System and tokens in CSS (Warm Minimalism)
-  - [x] Build Login Page / view
-  - [x] Build Kanban view (Student & Read-Only / Teacher mode)
-  - [x] Build Admin Views
-    - [x] Students List
-    - [x] Company Matrix
-    - [x] Email Sending Form (with student status analyzer)
-    - [x] Email Settings & Templates Editor
-  - [x] Add `/hello` Connectivity Check page
-- [x] Perform testing & verification (DoD check)
-  - [x] Verify build and type safety (`npm run typecheck`, `npm run build`)
-  - [x] Run manual browser testing to check UI/UX flow
-  - [x] Verify remote production deployment on Cloudflare (Pages & Workers)
+最終更新: 2026-07-18
+
+## 本番投入前（未完了）
+
+- [x] Cloudflare D1の不要DBを管理者判断で整理する
+- [x] `yojitsu-sp-db` を新規作成する（2026-07-18、APAC）
+- [x] `packages/backend/wrangler.toml` の安全用ダミーIDをSP DBの実IDへ置き換える
+- [x] SP DBだけに全migrationを適用する
+- [ ] Worker SecretsとGitHub Secrets/Variablesを設定する
+- [x] 初回同期を実行し、appとSPの件数を照合する（2026-07-18: 学生11、応募100、教員4）
+- [x] Time Travelの復旧可能bookmarkを確認する（2026-07-18）
+- [ ] `doc/production-test-checklist.md` を実環境で完了する
+- [ ] 合格後にGitHub Variable `SP_DEPLOY_ENABLED=true` を設定する
+
+## 個人情報（優先対応）
+
+- [x] `doc/dump.sql` の必要性を判断し、初回同期後に作業ツリーから削除する
+- [x] `doc/dump.sql` と旧画面画像を全commitから除去し、識別情報を匿名化する
+- [x] 整理したmainを `--force-with-lease` でGitHubへ反映する
+- [x] 旧commitに紐づくGitHub Actions実行とログを削除する
+- [ ] SHA直接指定で残る旧commitをGitHub側でパージする
+- [x] 未使用の `doc/images/` を作業ツリーから削除し、履歴削除対象にする
+- [ ] リポジトリの公開範囲と過去の共有先を確認する
+
+## コード側で完了済み
+
+- [x] app DBとSP DBのbinding分離
+- [x] appからSPへの一方向・1日2回同期
+- [x] ステージング、排他、失敗履歴、オーバーライド保持
+- [x] 学生・教員JWTと本人確認
+- [x] ログイン試行制限と教員PBKDF2資格情報
+- [x] CORS、CSP、主要セキュリティヘッダー
+- [x] 型検査、単体テスト、D1結合テスト、CSP検査、ビルドの一括確認
+- [x] CIのデプロイ停止ゲート
+
+## app廃止前
+
+- [ ] app側の更新停止日時を決め、利用者へ告知する
+- [ ] 最終同期と差分照合を実施する
+- [ ] SP DBのバックアップ・復旧試験を実施する
+- [ ] `SOURCE_DB`と定期同期を削除する変更をレビューする
+- [ ] SPを唯一の原本にする運用手順を承認する

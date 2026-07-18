@@ -8,3 +8,6 @@ tmp
 *.log
 Thumbs.db
 
+# 個人情報を含む可能性があるドキュメント用DBダンプ
+doc/dump.sql
+
