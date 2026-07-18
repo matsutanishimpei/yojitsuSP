@@ -1,4 +1,5 @@
-const PBKDF2_ITERATIONS = 310_000;
+// Cloudflare Workers Web Crypto currently rejects PBKDF2 counts above 100,000.
+const PBKDF2_ITERATIONS = 100_000;
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = '';

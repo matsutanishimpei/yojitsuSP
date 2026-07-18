@@ -4,6 +4,7 @@ import { createStrongCredential, verifyLegacyPassword, verifyStrongCredential } 
 describe('teacher password migration', () => {
   it('creates and verifies a PBKDF2 credential', async () => {
     const credential = await createStrongCredential('correct-password');
+    expect(credential.iterations).toBe(100_000);
     await expect(verifyStrongCredential('correct-password', credential.salt, credential.iterations, credential.passwordHash)).resolves.toBe(true);
     await expect(verifyStrongCredential('wrong-password', credential.salt, credential.iterations, credential.passwordHash)).resolves.toBe(false);
   });
