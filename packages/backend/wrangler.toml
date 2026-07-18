@@ -3,8 +3,18 @@ name = "yojitsu-sp-backend"
 main = "src/index.ts"
 compatibility_date = "2024-04-03"
 
+[triggers]
+# 09:00 and 21:00 JST. Synchronization is strictly SOURCE_DB -> DB.
+crons = ["0 0,12 * * *"]
+
 [[d1_databases]]
 binding = "DB"
+database_name = "yojitsu-sp-db"
+# Dedicated SP database. Never replace this with the app database ID.
+database_id = "b7afdd9b-a629-4171-af03-88aa51d4fef4"
+migrations_dir = "migrations"
+
+[[d1_databases]]
+binding = "SOURCE_DB"
 database_name = "yojitsu-db"
 database_id = "9bc3fbb9-7566-40ea-80ce-dc283cb30d0e"
-migrations_dir = "migrations"

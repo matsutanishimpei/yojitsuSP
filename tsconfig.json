@@ -8,7 +8,6 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "lib": ["ESNext", "DOM"],
-    "types": ["@cloudflare/workers-types", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@my-app/shared": ["./packages/shared/src/index.ts"],
@@ -17,5 +16,5 @@
       "@my-app/backend/*": ["./packages/backend/src/*"]
     }
   },
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "tmp"]
 }

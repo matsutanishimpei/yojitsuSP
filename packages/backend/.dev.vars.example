@@ -1,0 +1,6 @@
+JWT_SECRET=replace-with-a-long-random-secret
+ALLOWED_ORIGIN=http://localhost:5173
+GAS_EMAIL_URL=
+GAS_SECRET_TOKEN=
+GBIZINFO_API_KEY=
+SYNC_ALERT_WEBHOOK=

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   loginSchema,
+  adminLoginSchema,
   applicationStepSchema,
   createCardSchema,
   updateCardSchema,
@@ -11,6 +12,7 @@ import {
 } from '../schemas';
 
 export type LoginInput = z.infer<typeof loginSchema>;
+export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type ApplicationStep = z.infer<typeof applicationStepSchema>;
 export type CreateCardInput = z.infer<typeof createCardSchema>;
 export type UpdateCardInput = z.infer<typeof updateCardSchema>;
@@ -45,3 +47,30 @@ export interface MailTemplate {
   key: string;
   value: string;
 }
+
+export interface AdminStudentSummary {
+  student_id: string;
+  student_name: string;
+  parent_email: string | null;
+  is_completed: number;
+  active_count: number;
+  offer_count: number;
+  closed_count: number;
+  last_updated: string | null;
+  active_steps: string | null;
+}
+
+export interface CompanyMatrixItem {
+  company_name: string;
+  hojin_number: string | null;
+  status: ApplicationCard['status'];
+  student_id: string;
+  student_name: string;
+}
+
+export interface CompanySearchResult {
+  name: string;
+  number: string;
+}
+
+export type CardsByStatus = Record<'選考中' | '内定' | '終了', ApplicationCard[]>;

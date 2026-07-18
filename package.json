@@ -7,7 +7,13 @@
   "scripts": {
     "dev:backend": "npm run dev --workspace=@my-app/backend",
     "dev:frontend": "npm run dev --workspace=@my-app/frontend",
-    "build": "npm run build --workspaces",
-    "typecheck": "tsc --noEmit"
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -p packages/backend && tsc -p packages/frontend",
+    "test": "vitest run",
+    "test:d1": "node packages/backend/test/run-d1-integration.mjs",
+    "check": "npm run typecheck && npm test && npm run test:d1 && npm run test:csp --workspace=@my-app/frontend && npm run build"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6"
   }
 }

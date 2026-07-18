@@ -2,8 +2,17 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { sign } from 'hono/jwt';
+import { deriveApplicationState } from './application-state';
+import type { D1Database, ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
+import type { Bindings, Variables } from './env';
+import { clearLoginFailures, getJwtSecret, isLoginLimited, loginAttemptKey, recordLoginFailure, requireAdmin, requireSession } from './auth';
+import { createStrongCredential, verifyLegacyPassword, verifyStrongCredential } from './password';
+import { SyncInProgressError, syncSourceToSp } from './sync';
+import { searchCompanies } from './company-search';
 import {
   loginSchema,
+  adminLoginSchema,
   createCardSchema,
   updateCardSchema,
   updateStudentSchema,
@@ -11,25 +20,27 @@ import {
   saveTemplatesSchema,
   sendEmailSchema,
 } from '@my-app/shared';
+import type { AdminStudentSummary, ApplicationCard, CompanyMatrixItem } from '@my-app/shared';
 
-type Bindings = {
-  DB: D1Database;
-  ADMIN_ID: string;
-  GAS_EMAIL_URL: string;
-  GAS_SECRET_TOKEN: string;
-  GBIZINFO_API_KEY?: string;
-};
-
-const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath('/api');
 
 app.use('*', cors({
-  origin: (origin) => origin || '*',
+  origin: (origin, c) => {
+    const allowed = c.env.ALLOWED_ORIGIN;
+    if (allowed) return origin === allowed ? origin : '';
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ? origin : '';
+  },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   exposeHeaders: ['Content-Length'],
   maxAge: 600,
-  credentials: true,
+  credentials: false,
 }));
+
+app.use('/admin/*', requireAdmin);
+app.use('/cards', requireSession);
+app.use('/cards/*', requireSession);
+app.use('/search', requireSession);
 
 // Unified Error Handler
 app.onError((err, c) => {
@@ -48,105 +59,126 @@ app.onError((err, c) => {
 
 // Admin Authorization Helper
 const isAuthorizedAdmin = (adminId: string | undefined, expectedAdminId: string) => {
-  return adminId && adminId === expectedAdminId;
+  // Admin routes are protected by JWT middleware. Keep the query parameter only
+  // for backwards-compatible Hono RPC signatures during the SP migration.
+  return Boolean(adminId && expectedAdminId);
 };
-
-// Mock Companies Fallback List
-const MOCK_COMPANIES = [
-  { name: 'キャロルシステム株式会社', number: '3011001006461' },
-  { name: '株式会社共立ソリューションズ', number: '4010001066795' },
-  { name: '株式会社アイエスエフネット', number: '5010401052220' },
-  { name: '株式会社テクノプロ', number: '1010001140685' },
-  { name: '日本システムウエア株式会社', number: '8011001003884' },
-  { name: '伊藤忠テクノソリューションズ株式会社', number: '3010401050212' },
-  { name: 'トランスコスモス株式会社', number: '3011101004696' },
-  { name: '株式会社システナ', number: '8010401056581' },
-  { name: 'ＳＣＳＫ株式会社', number: '6010001142995' },
-  { name: '株式会社大塚商会', number: '1010001015694' },
-  { name: '富士ソフト株式会社', number: '5020001026038' },
-  { name: '株式会社エヌ・ティ・ティ・データ', number: '9010001046390' }
-];
 
 const routes = app
   .get('/hello', (c) => {
     return c.json({ message: 'Hello Hono!' });
   })
 
+  .post('/admin/sync', zValidator('query', z.object({ admin_id: z.string() })), async (c) => {
+    try {
+      const result = await syncSourceToSp(c.env);
+      return c.json({ success: true, ...result });
+    } catch (error) {
+      if (error instanceof SyncInProgressError) {
+        return c.json({ success: false, error: { message: error.message } }, 409);
+      }
+      throw error;
+    }
+  })
+
+  .get('/admin/sync/status', zValidator('query', z.object({ admin_id: z.string() })), async (c) => {
+    const latest = await c.env.DB.prepare('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 20').all();
+    return c.json({ runs: latest.results });
+  })
+
+  .post('/admin/login', zValidator('json', adminLoginSchema), async (c) => {
+    const { id, password } = c.req.valid('json');
+    const attemptKey = loginAttemptKey(c, 'admin', id);
+    if (await isLoginLimited(c.env.DB, attemptKey)) {
+      return c.json({ success: false, error: { message: 'ログイン試行回数が上限に達しました。15分後に再度お試しください' } }, 429);
+    }
+    const teacher = await c.env.DB.prepare(
+      'SELECT id, name, password FROM teachers WHERE id = ? AND source_deleted_at IS NULL'
+    ).bind(id.trim()).first<{ id: string; name: string; password: string }>();
+    if (!teacher) {
+      await recordLoginFailure(c.env.DB, attemptKey);
+      return c.json({ success: false, error: { message: '教員IDまたはパスワードが正しくありません' } }, 401);
+    }
+
+    const strong = await c.env.DB.prepare(
+      'SELECT salt, iterations, password_hash FROM sp_teacher_credentials WHERE teacher_id=?'
+    ).bind(teacher.id).first<{ salt: string; iterations: number; password_hash: string }>();
+    const passwordValid = strong
+      ? await verifyStrongCredential(password, strong.salt, strong.iterations, strong.password_hash)
+      : await verifyLegacyPassword(password, teacher.id, teacher.password);
+    if (!passwordValid) {
+      await recordLoginFailure(c.env.DB, attemptKey);
+      return c.json({ success: false, error: { message: '教員IDまたはパスワードが正しくありません' } }, 401);
+    }
+
+    if (!strong) {
+      const credential = await createStrongCredential(password);
+      await c.env.DB.prepare(`INSERT INTO sp_teacher_credentials
+        (teacher_id, salt, iterations, password_hash) VALUES (?, ?, ?, ?)
+        ON CONFLICT(teacher_id) DO UPDATE SET salt=excluded.salt, iterations=excluded.iterations,
+          password_hash=excluded.password_hash, upgraded_at=CURRENT_TIMESTAMP`)
+        .bind(teacher.id, credential.salt, credential.iterations, credential.passwordHash).run();
+    }
+    await clearLoginFailures(c.env.DB, attemptKey);
+    const token = await sign({ sub: teacher.id, role: 'admin', exp: Math.floor(Date.now() / 1000) + 60 * 60 * 8 }, getJwtSecret(c), 'HS256');
+    return c.json({ success: true, token, role: 'admin' as const, id: teacher.id, name: teacher.name });
+  })
+
   // 3.1 Student Login
   .post('/login', zValidator('json', loginSchema), async (c) => {
     const { student_id, parent_birthday } = c.req.valid('json');
+    const attemptKey = loginAttemptKey(c, 'student', student_id);
+    if (await isLoginLimited(c.env.DB, attemptKey)) {
+      return c.json({ success: false, error: { message: 'ログイン試行回数が上限に達しました。15分後に再度お試しください' } }, 429);
+    }
     
     const student = await c.env.DB.prepare(
-      'SELECT * FROM students WHERE id = ? AND parent_birthday = ?'
+      'SELECT * FROM students WHERE id = ? AND parent_birthday = ? AND source_deleted_at IS NULL'
     )
       .bind(student_id, parent_birthday)
       .first<{ name: string }>();
 
     if (!student) {
+      await recordLoginFailure(c.env.DB, attemptKey);
       return c.json(
         { success: false, error: { message: '学籍番号または誕生日が正しくありません' } },
         401
       );
     }
 
-    return c.json({ success: true, name: student.name });
+    await clearLoginFailures(c.env.DB, attemptKey);
+    const token = await sign({ sub: student_id, role: 'student', exp: Math.floor(Date.now() / 1000) + 60 * 60 * 8 }, getJwtSecret(c), 'HS256');
+    return c.json({ success: true, token, role: 'student' as const, id: student_id, name: student.name });
   })
 
   // 3.2 Company Search (gBizINFO or Mock Fallback)
   .get('/search', async (c) => {
     const name = c.req.query('name') || '';
-    if (!name) {
-      return c.json([]);
-    }
-
-    // Try gBizINFO API
-    try {
-      const url = `https://info.gbiz.go.jp/hojin/v1/hojin?name=${encodeURIComponent(name)}&limit=10`;
-      const headers: Record<string, string> = {
-        'Accept': 'application/json',
-      };
-      
-      const apiKey = c.env.GBIZINFO_API_KEY;
-      if (apiKey) {
-        headers['X-gbizinfo-key'] = apiKey;
-      }
-
-      const response = await fetch(url, { headers });
-      if (response.ok) {
-        const data = (await response.json()) as any;
-        if (data && data['hojin-infos']) {
-          const results = data['hojin-infos'].map((info: any) => ({
-            name: info.name || '',
-            number: info.corporate_number || '',
-          }));
-          return c.json(results);
-        }
-      }
-    } catch (e) {
-      console.warn('gBizINFO API fetch failed, falling back to mock search:', e);
-    }
-
-    // Local Mock Fallback Search
-    const query = name.toLowerCase();
-    const results = MOCK_COMPANIES.filter(
-      (comp) =>
-        comp.name.toLowerCase().includes(query) ||
-        comp.number.includes(query)
-    );
-    
-    return c.json(results);
+    return c.json(await searchCompanies(name, c.env.GBIZINFO_API_KEY));
   })
 
   // 3.3 Kanban Card Management
   // GET /cards (Get all cards or for specific student)
   .get('/cards', async (c) => {
     const studentId = c.req.query('student_id');
+    const auth = c.get('auth');
+    if (auth.role === 'student' && studentId !== auth.sub) {
+      return c.json({ success: false, error: { message: '他の学生の情報は参照できません' } }, 403);
+    }
     
-    let query = 'SELECT * FROM applications';
+    let query = `SELECT a.id, a.student_id, a.company_name, a.hojin_number,
+      COALESCE(o.job_title, a.job_title) AS job_title,
+      COALESCE(o.status, a.status) AS status,
+      COALESCE(o.current_step, a.current_step) AS current_step,
+      COALESCE(o.steps_json, a.steps_json) AS steps_json,
+      COALESCE(o.memo, a.memo) AS memo,
+      COALESCE(o.updated_at, a.updated_at) AS updated_at
+      FROM applications a LEFT JOIN application_overrides o ON o.application_id = a.id
+      WHERE a.source_deleted_at IS NULL`;
     let bindings: string[] = [];
     
     if (studentId) {
-      query += ' WHERE student_id = ?';
+      query += ' AND a.student_id = ?';
       bindings.push(studentId);
     }
     
@@ -154,11 +186,11 @@ const routes = app
     
     const { results } = await c.env.DB.prepare(query)
       .bind(...bindings)
-      .all<any>();
+      .all<ApplicationCard>();
 
     // Map DB status ("予定", "選考中", "内定", "終了") to columns:
     // "選考中" column maps both "予定" and "選考中"
-    const columns: Record<string, any[]> = {
+    const columns: Record<'選考中' | '内定' | '終了', ApplicationCard[]> = {
       '選考中': [],
       '内定': [],
       '終了': [],
@@ -181,6 +213,10 @@ const routes = app
   // POST /cards (Create a card)
   .post('/cards', zValidator('json', createCardSchema), async (c) => {
     const { student_id, company_name, hojin_number } = c.req.valid('json');
+    const auth = c.get('auth');
+    if (auth.role === 'student' && student_id !== auth.sub) {
+      return c.json({ success: false, error: { message: '他の学生には登録できません' } }, 403);
+    }
 
     // Student existence check
     const student = await c.env.DB.prepare('SELECT id FROM students WHERE id = ?')
@@ -207,38 +243,39 @@ const routes = app
       );
     }
 
-    const info = await c.env.DB.prepare(
-      'INSERT INTO applications (student_id, company_name, hojin_number, status, current_step, steps_json, memo) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    const next = await c.env.DB.prepare('SELECT COALESCE(MIN(id), 0) - 1 AS id FROM applications').first<{ id: number }>();
+    const localId = Math.min(next?.id ?? -1, -1);
+    await c.env.DB.prepare(
+      'INSERT INTO applications (id, student_id, company_name, hojin_number, status, current_step, steps_json, memo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-      .bind(student_id, company_name, hojin_number || null, '予定', '未着手', '[]', '')
+      .bind(localId, student_id, company_name, hojin_number || null, '予定', '未着手', '[]', '')
       .run();
 
-    return c.json({ success: true, id: Number(info.meta.last_row_id) });
+    return c.json({ success: true, id: localId });
   })
 
   // PATCH /cards/:id (Update card details)
   .patch('/cards/:id', zValidator('json', updateCardSchema), async (c) => {
     const id = c.req.param('id');
     const updates = c.req.valid('json');
+    const auth = c.get('auth');
+    const owner = await c.env.DB.prepare('SELECT student_id FROM applications WHERE id = ? AND source_deleted_at IS NULL')
+      .bind(id).first<{ student_id: string }>();
+    if (!owner) return c.json({ success: false, error: { message: 'カードが見つかりません' } }, 404);
+    if (auth.role === 'student' && owner.student_id !== auth.sub) {
+      return c.json({ success: false, error: { message: '他の学生のカードは更新できません' } }, 403);
+    }
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
+    let derivedCurrentStep: string | undefined;
 
     let finalStatus = updates.status;
+    let parsedState: ReturnType<typeof deriveApplicationState> | undefined;
     if (finalStatus === undefined && updates.steps_json !== undefined) {
       try {
-        const steps = JSON.parse(updates.steps_json || '[]');
-        if (Array.isArray(steps) && steps.length > 0) {
-          const hasFailedOrWithdrawn = steps.some((s: any) => s.result === '不合格' || s.result === '辞退');
-          if (hasFailedOrWithdrawn) {
-            finalStatus = '終了';
-          } else {
-            const hasOffer = steps.some((s: any) => s.name === '最終面接' && s.result === '合格');
-            if (hasOffer) {
-              finalStatus = '内定';
-            }
-          }
-        }
+        parsedState = deriveApplicationState(JSON.parse(updates.steps_json || '[]'));
+        finalStatus = parsedState.status;
       } catch {}
     }
 
@@ -259,8 +296,9 @@ const routes = app
         const steps = JSON.parse(updates.steps_json || '[]');
         if (Array.isArray(steps) && steps.length > 0) {
           const lastStep = steps[steps.length - 1];
+          derivedCurrentStep = parsedState?.currentStep || lastStep.name || '未着手';
           fields.push('current_step = ?');
-          values.push(lastStep.name || '未着手');
+          values.push(derivedCurrentStep);
         }
       } catch {}
     }
@@ -273,14 +311,31 @@ const routes = app
       return c.json({ success: true });
     }
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id);
-
-    await c.env.DB.prepare(
-      `UPDATE applications SET ${fields.join(', ')} WHERE id = ?`
-    )
-      .bind(...values)
-      .run();
+    if (Number(id) < 0) {
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(id);
+      await c.env.DB.prepare(`UPDATE applications SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+    } else {
+      const existing = await c.env.DB.prepare('SELECT * FROM application_overrides WHERE application_id = ?')
+        .bind(id).first<Record<string, unknown>>();
+      const merged: Record<string, unknown> = { ...(existing || {}), ...updates };
+      if (finalStatus !== undefined) merged.status = finalStatus;
+      if (derivedCurrentStep !== undefined) merged.current_step = derivedCurrentStep;
+      if (updates.job_title === null) merged.job_title = '';
+      if (updates.memo === null) merged.memo = '';
+      if (updates.steps_json === null) {
+        merged.steps_json = '[]';
+        merged.current_step = '未着手';
+      }
+      await c.env.DB.prepare(`INSERT INTO application_overrides
+        (application_id, status, job_title, current_step, steps_json, memo, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(application_id) DO UPDATE SET
+          status=excluded.status, job_title=excluded.job_title, current_step=excluded.current_step,
+          steps_json=excluded.steps_json, memo=excluded.memo, updated_at=CURRENT_TIMESTAMP`)
+        .bind(id, merged.status ?? null, merged.job_title ?? null, merged.current_step ?? null,
+          merged.steps_json ?? null, merged.memo ?? null).run();
+    }
 
     return c.json({ success: true });
   })
@@ -303,17 +358,20 @@ const routes = app
         SELECT 
           s.id AS student_id,
           s.name AS student_name,
-          s.parent_email,
-          s.is_completed,
-          IFNULL(SUM(CASE WHEN a.status IN ('予定', '選考中') THEN 1 ELSE 0 END), 0) AS active_count,
-          IFNULL(SUM(CASE WHEN a.status = '内定' THEN 1 ELSE 0 END), 0) AS offer_count,
-          IFNULL(SUM(CASE WHEN a.status = '終了' THEN 1 ELSE 0 END), 0) AS closed_count,
-          MAX(a.updated_at) AS last_updated,
-          GROUP_CONCAT(CASE WHEN a.status IN ('予定', '選考中') THEN a.current_step END, ',') AS active_steps
+          COALESCE(so.parent_email, s.parent_email) AS parent_email,
+          COALESCE(so.is_completed, s.is_completed) AS is_completed,
+          IFNULL(SUM(CASE WHEN COALESCE(ao.status, a.status) IN ('予定', '選考中') THEN 1 ELSE 0 END), 0) AS active_count,
+          IFNULL(SUM(CASE WHEN COALESCE(ao.status, a.status) = '内定' THEN 1 ELSE 0 END), 0) AS offer_count,
+          IFNULL(SUM(CASE WHEN COALESCE(ao.status, a.status) = '終了' THEN 1 ELSE 0 END), 0) AS closed_count,
+          MAX(COALESCE(ao.updated_at, a.updated_at)) AS last_updated,
+          GROUP_CONCAT(CASE WHEN COALESCE(ao.status, a.status) IN ('予定', '選考中') THEN COALESCE(ao.current_step, a.current_step) END, ',') AS active_steps
         FROM students s
-        LEFT JOIN applications a ON s.id = a.student_id
+        LEFT JOIN student_overrides so ON so.student_id = s.id
+        LEFT JOIN applications a ON s.id = a.student_id AND a.source_deleted_at IS NULL
+        LEFT JOIN application_overrides ao ON ao.application_id = a.id
+        WHERE s.source_deleted_at IS NULL
         GROUP BY s.id
-      `).all<any>();
+      `).all<AdminStudentSummary>();
 
       return c.json({ students: results || [] });
     }
@@ -337,12 +395,14 @@ const routes = app
         SELECT 
           a.company_name,
           a.hojin_number,
-          a.status,
+          COALESCE(ao.status, a.status) AS status,
           a.student_id,
           s.name AS student_name
         FROM applications a
         JOIN students s ON a.student_id = s.id
-      `).all<any>();
+        LEFT JOIN application_overrides ao ON ao.application_id = a.id
+        WHERE a.source_deleted_at IS NULL AND s.source_deleted_at IS NULL
+      `).all<CompanyMatrixItem>();
 
       return c.json({ matrix: results || [] });
     }
@@ -378,7 +438,9 @@ const routes = app
           
           statements.push(
             c.env.DB.prepare(
-              'INSERT OR REPLACE INTO students (id, name, parent_birthday) VALUES (?, ?, ?)'
+              `INSERT INTO students (id, name, parent_birthday, source_managed)
+               VALUES (?, ?, ?, 0)
+               ON CONFLICT(id) DO UPDATE SET name=excluded.name, parent_birthday=excluded.parent_birthday`
             ).bind(id, name, birthday)
           );
           count++;
@@ -411,29 +473,17 @@ const routes = app
       const id = c.req.param('id');
       const { is_completed, parent_email } = c.req.valid('json');
 
-      const fields: string[] = [];
-      const values: any[] = [];
-
-      if (is_completed !== undefined) {
-        fields.push('is_completed = ?');
-        values.push(is_completed);
-      }
-      if (parent_email !== undefined) {
-        fields.push('parent_email = ?');
-        values.push(parent_email);
-      }
-
-      if (fields.length === 0) {
+      if (is_completed === undefined && parent_email === undefined) {
         return c.json({ success: true });
       }
-
-      values.push(id);
-
-      await c.env.DB.prepare(
-        `UPDATE students SET ${fields.join(', ')} WHERE id = ?`
-      )
-        .bind(...values)
-        .run();
+      const existing = await c.env.DB.prepare('SELECT parent_email, is_completed FROM student_overrides WHERE student_id = ?')
+        .bind(id).first<{ parent_email: string | null; is_completed: number | null }>();
+      await c.env.DB.prepare(`INSERT INTO student_overrides (student_id, parent_email, is_completed, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(student_id) DO UPDATE SET parent_email=excluded.parent_email,
+          is_completed=excluded.is_completed, updated_at=CURRENT_TIMESTAMP`)
+        .bind(id, parent_email !== undefined ? (parent_email ?? '') : existing?.parent_email ?? null,
+          is_completed !== undefined ? is_completed : existing?.is_completed ?? null).run();
 
       return c.json({ success: true });
     }
@@ -454,7 +504,15 @@ const routes = app
       }
 
       const id = c.req.param('id');
-      await c.env.DB.prepare('DELETE FROM students WHERE id = ?').bind(id).run();
+      const source = await c.env.DB.prepare('SELECT source_managed FROM students WHERE id = ?').bind(id)
+        .first<{ source_managed: number }>();
+      if (source?.source_managed) {
+        return c.json({ success: false, error: { message: 'app由来の学生はSPから削除できません' } }, 409);
+      }
+      await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM applications WHERE student_id = ?').bind(id),
+        c.env.DB.prepare('DELETE FROM students WHERE id = ?').bind(id),
+      ]);
 
       return c.json({ success: true });
     }
@@ -569,4 +627,10 @@ const routes = app
   );
 
 export type AppType = typeof routes;
-export default app;
+export { app };
+export default {
+  fetch: app.fetch,
+  scheduled: (_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
+    ctx.waitUntil(syncSourceToSp(env));
+  },
+};
