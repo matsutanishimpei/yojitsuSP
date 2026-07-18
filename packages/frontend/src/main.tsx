@@ -7,12 +7,23 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { HelloView } from './components/HelloView';
 import client from './lib/hc';
 import './index.css';
+import type { AdminStudentSummary } from '@my-app/shared';
 
 interface UserSession {
   role: 'student' | 'admin';
   id: string;
   name: string;
+  token: string;
 }
+
+const isSessionValid = (session: UserSession) => {
+  try {
+    const payload = JSON.parse(atob(session.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+};
 
 const DelegatedKanbanWrapper = ({
   adminId,
@@ -33,8 +44,8 @@ const DelegatedKanbanWrapper = ({
           query: { admin_id: adminId },
         });
         if (res.ok) {
-          const data = await res.json() as any;
-          const found = data.students?.find((s: any) => s.student_id === studentId);
+          const data = await res.json() as { students: AdminStudentSummary[] };
+          const found = data.students?.find((student) => student.student_id === studentId);
           if (found) {
             setStudentName(found.student_name);
           }
@@ -184,13 +195,21 @@ const App = () => {
     try {
       const stored = localStorage.getItem('yojitsu_session');
       if (stored) {
-        setUser(JSON.parse(stored));
+        const session = JSON.parse(stored) as UserSession;
+        if (isSessionValid(session)) setUser(session);
+        else localStorage.removeItem('yojitsu_session');
       }
     } catch (e) {
       console.error('Failed to parse session:', e);
     } finally {
       setInitializing(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const clearExpiredSession = () => setUser(null);
+    window.addEventListener('yojitsu:unauthorized', clearExpiredSession);
+    return () => window.removeEventListener('yojitsu:unauthorized', clearExpiredSession);
   }, []);
 
   const handleLoginSuccess = (userData: UserSession) => {

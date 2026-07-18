@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import client from '../../lib/hc';
 import { Send, AlertTriangle, CheckCircle, Mail, Play, Loader } from 'lucide-react';
-import { ApplicationCard } from '@my-app/shared';
+import { ApplicationCard, CardsByStatus } from '@my-app/shared';
 
 interface StudentStat {
   student_id: string;
@@ -117,7 +117,7 @@ export const EmailSender: React.FC<EmailSenderProps> = ({ adminId, studentsList 
     try {
       const res = await client.api.cards.$get({ query: { student_id: student.student_id } });
       if (res.ok) {
-        const cards = (await res.json()) as any;
+        const cards = (await res.json()) as CardsByStatus;
         const activeCards = cards['選考中'] || [];
         const offerCards = cards['内定'] || [];
         const closedCards = cards['終了'] || [];
@@ -205,7 +205,7 @@ export const EmailSender: React.FC<EmailSenderProps> = ({ adminId, studentsList 
         const data = await res.json();
         setSendResult({
           success: true,
-          message: (data as any).mocked 
+          message: ('mocked' in data && data.mocked)
             ? 'メール送信をシミュレートしました（GAS_EMAIL_URL未設定のためログに出力しました）' 
             : 'メールを送信しました',
         });
@@ -240,8 +240,9 @@ export const EmailSender: React.FC<EmailSenderProps> = ({ adminId, studentsList 
         } else {
           setBulkList(prev => prev.map((b, idx) => idx === i ? { ...b, status: 'error', errorMessage: 'HTTPエラー' } : b));
         }
-      } catch (err: any) {
-        setBulkList(prev => prev.map((b, idx) => idx === i ? { ...b, status: 'error', errorMessage: err.message || '通信エラー' } : b));
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '通信エラー';
+        setBulkList(prev => prev.map((b, idx) => idx === i ? { ...b, status: 'error', errorMessage: message } : b));
       }
       
       // Add a slight delay between calls to not overload GAS Webhook
@@ -302,7 +303,7 @@ export const EmailSender: React.FC<EmailSenderProps> = ({ adminId, studentsList 
                   id="select_recipient"
                   className="form-control"
                   value={recipientType}
-                  onChange={(e) => setRecipientType(e.target.value as any)}
+                  onChange={(e) => setRecipientType(e.target.value as 'student' | 'parent')}
                   disabled={loading || sending || !selectedStudentId}
                 >
                   <option value="student">学生本人宛</option>

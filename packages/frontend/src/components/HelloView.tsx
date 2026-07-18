@@ -35,9 +35,9 @@ export const HelloView: React.FC = () => {
       } else {
         throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.message || 'ネットワークエラーが発生しました');
+      setErrorMsg(err instanceof Error ? err.message : 'ネットワークエラーが発生しました');
       setStatus('error');
     } finally {
       setLoading(false);

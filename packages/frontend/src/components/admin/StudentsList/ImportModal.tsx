@@ -105,7 +105,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onSub
             <textarea
               className="form-control"
               rows={6}
-              placeholder="00ZZ0000,電子太郎,0309&#10;REDACTED,電子次郎,0715"
+              placeholder="00ZZ0000,電子太郎,0309&#10;00ZZ0000,電子次郎,0715"
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
               style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}

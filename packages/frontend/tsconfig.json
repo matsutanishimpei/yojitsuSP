@@ -9,7 +9,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "moduleDetection": "force",
-    "types": ["vite/client", "@cloudflare/workers-types"]
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

@@ -1,10 +1,11 @@
 import React from 'react';
+import type { ApplicationStep, CardsByStatus } from '@my-app/shared';
 
 interface ExpandedDetailProps {
   studentName: string;
   studentId: string;
   loading: boolean;
-  cardsData: any;
+  cardsData?: CardsByStatus;
 }
 
 export const ExpandedDetail: React.FC<ExpandedDetailProps> = ({
@@ -13,7 +14,7 @@ export const ExpandedDetail: React.FC<ExpandedDetailProps> = ({
   loading,
   cardsData
 }) => {
-  const getActiveCardsCount = (data: any) => {
+  const getActiveCardsCount = (data?: CardsByStatus) => {
     if (!data) return 0;
     return (data.選考中?.length || 0) + (data.内定?.length || 0) + (data.終了?.length || 0);
   };
@@ -34,7 +35,7 @@ export const ExpandedDetail: React.FC<ExpandedDetailProps> = ({
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-          {['選考中', '内定', '終了'].map(columnName => {
+          {(['選考中', '内定', '終了'] as const).map(columnName => {
             const cards = cardsData[columnName] || [];
             if (cards.length === 0) return null;
             
@@ -46,10 +47,10 @@ export const ExpandedDetail: React.FC<ExpandedDetailProps> = ({
                 </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {cards.map((card: any) => {
-                    let steps: any[] = [];
+                  {cards.map((card) => {
+                    let steps: ApplicationStep[] = [];
                     try {
-                      steps = card.steps_json ? JSON.parse(card.steps_json) : [];
+                      steps = card.steps_json ? JSON.parse(card.steps_json) as ApplicationStep[] : [];
                     } catch (e) {
                       console.error(e);
                     }
@@ -68,7 +69,7 @@ export const ExpandedDetail: React.FC<ExpandedDetailProps> = ({
                         
                         {steps.length > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-subtle)', paddingTop: '8px', marginTop: '6px' }}>
-                            {steps.map((step: any, idx: number) => (
+                            {steps.map((step, idx) => (
                               <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem' }}>
                                 <span style={{ color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{step.date.substring(5)}</span>
                                 <span style={{ fontWeight: 500, color: 'var(--text-primary)', flex: 1, marginLeft: '8px', textAlign: 'left' }}>{step.name}</span>

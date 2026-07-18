@@ -3,13 +3,14 @@ import client from '../lib/hc';
 import { LogIn, ShieldAlert } from 'lucide-react';
 
 interface LoginViewProps {
-  onLoginSuccess: (user: { role: 'student' | 'admin'; id: string; name: string }) => void;
+  onLoginSuccess: (user: { role: 'student' | 'admin'; id: string; name: string; token: string }) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [idInput, setIdInput] = useState('');
   const [birthdayInput, setBirthdayInput] = useState('');
-  const [showBirthday, setShowBirthday] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginMode, setLoginMode] = useState<'student' | 'admin'>('student');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -24,34 +25,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      // 1. Try Admin Login first
-      if (!showBirthday) {
-        const adminRes = await client.api.admin.students.$get({
-          query: { admin_id: idInput.trim() },
+      if (loginMode === 'admin') {
+        const adminRes = await client.api.admin.login.$post({
+          json: { id: idInput.trim(), password: passwordInput },
         });
-
         if (adminRes.ok) {
-          // Success: Authorized as Admin!
-          setLoading(false);
-          onLoginSuccess({
-            role: 'admin',
-            id: idInput.trim(),
-            name: '管理者教員',
-          });
+          const data = await adminRes.json();
+          onLoginSuccess({ role: 'admin', id: data.id, name: data.name, token: data.token });
           return;
         }
-        
-        // 2. If it's a 401 error, transition to Student Login and request birthday
-        if (adminRes.status === 401) {
-          setShowBirthday(true);
-          setLoading(false);
-          setError('学生用ログイン：誕生日の入力が必要です');
-          return;
-        }
+        const data = await adminRes.json().catch(() => null) as { error?: { message?: string } } | null;
+        setError(data?.error?.message || '教員IDまたはパスワードが正しくありません');
+        return;
       }
 
-      // 3. Student Login Flow
-      if (showBirthday) {
+      if (loginMode === 'student') {
         if (!birthdayInput.trim() || birthdayInput.trim().length !== 4) {
           setError('誕生日は4桁で入力してください (例: 0309)');
           setLoading(false);
@@ -70,25 +58,23 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           setLoading(false);
           if (data.success) {
             onLoginSuccess({
-              role: 'student',
-              id: idInput.trim(),
-              name: data.name || '学生',
+              role: 'student', id: data.id, name: data.name || '学生', token: data.token,
             });
           } else {
             setError('ログインに失敗しました');
           }
         } else {
           const data = await studentRes.json().catch(() => ({}));
-          setError(
-            (data as any)?.error?.message || 
-            '学籍番号または誕生日が正しくありません'
-          );
+          const error = data as { error?: { message?: string } };
+          setError(error.error?.message || '学籍番号または誕生日が正しくありません');
           setLoading(false);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('通信エラーが発生しました。ネットワークを確認してください。');
+      setLoading(false);
+    } finally {
       setLoading(false);
     }
   };
@@ -114,13 +100,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: showBirthday && !birthdayInput ? 'var(--bg-secondary)' : '#FEF2F2',
-            color: showBirthday && !birthdayInput ? 'var(--text-secondary)' : '#991B1B',
+            backgroundColor: '#FEF2F2',
+            color: '#991B1B',
             padding: '12px',
             borderRadius: 'var(--radius-base)',
             fontSize: '0.875rem',
             marginBottom: '20px',
-            border: showBirthday && !birthdayInput ? '1px solid var(--border-subtle)' : '1px solid #FCA5A5'
+            border: '1px solid #FCA5A5'
           }}>
             <ShieldAlert size={18} style={{ flexShrink: 0 }} />
             <span>{error}</span>
@@ -128,24 +114,31 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         )}
 
         <form onSubmit={handleLogin}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+            {(['student', 'admin'] as const).map((mode) => (
+              <button key={mode} type="button" className={`btn ${loginMode === mode ? 'btn-primary' : ''}`}
+                style={{ flex: 1 }} onClick={() => { setLoginMode(mode); setError(null); }}>
+                {mode === 'student' ? '学生' : '教員'}
+              </button>
+            ))}
+          </div>
           <div className="form-group">
-            <label htmlFor="student_id">学籍番号 または 管理者ID</label>
+            <label htmlFor="student_id">{loginMode === 'student' ? '学籍番号' : '教員ID'}</label>
             <input
               id="student_id"
               type="text"
               className="form-control"
-              placeholder="例: REDACTED"
+              placeholder="例: 00ZZ0000"
               value={idInput}
               onChange={(e) => {
                 setIdInput(e.target.value);
-                if (showBirthday) setShowBirthday(false);
               }}
               disabled={loading}
               autoFocus
             />
           </div>
 
-          {showBirthday && (
+          {loginMode === 'student' && (
             <div className="form-group">
               <label htmlFor="birthday">親の誕生日 (4桁の数字)</label>
               <input
@@ -159,6 +152,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 disabled={loading}
                 autoFocus
               />
+            </div>
+          )}
+
+          {loginMode === 'admin' && (
+            <div className="form-group">
+              <label htmlFor="password">パスワード</label>
+              <input id="password" type="password" className="form-control" value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)} disabled={loading} autoComplete="current-password" />
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import client from '../lib/hc';
-import { ApplicationCard } from '@my-app/shared';
+import { ApplicationCard, CompanySearchResult } from '@my-app/shared';
 import { CardDetailModal } from './CardDetailModal';
 import { Plus, Search, LogOut, ArrowLeft, Building2, Calendar, FileText, ChevronRight } from 'lucide-react';
 
@@ -83,7 +83,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
         const res = await client.api.search.$get({ query: { name: val } });
         if (res.ok) {
           const data = await res.json();
-          setSuggestions(data as any);
+          setSuggestions(data as CompanySearchResult[]);
           setShowSuggestions(true);
         }
       } catch (err) {
@@ -121,7 +121,8 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
         await fetchCards();
       } else {
         const errData = await res.json().catch(() => ({}));
-        alert((errData as any)?.error?.message || 'カードの追加に失敗しました。');
+        const error = errData as { error?: { message?: string } };
+        alert(error.error?.message || 'カードの追加に失敗しました。');
       }
     } catch (err) {
       console.error(err);

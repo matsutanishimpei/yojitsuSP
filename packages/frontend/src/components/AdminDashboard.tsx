@@ -7,6 +7,7 @@ import { EmailSettings } from './admin/EmailSettings';
 import { TemplatesEditor } from './admin/TemplatesEditor';
 import { LogOut, Users, LayoutGrid, Mail } from 'lucide-react';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
+import type { AdminStudentSummary } from '@my-app/shared';
 
 interface AdminDashboardProps {
   adminId: string;
@@ -50,9 +51,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminId, onLogou
         query: { admin_id: adminId },
       });
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = await res.json() as { students: AdminStudentSummary[] };
         setStudents(
-          data.students.map((s: any) => ({
+          data.students.map((s) => ({
             student_id: s.student_id,
             student_name: s.student_name,
             parent_email: s.parent_email,

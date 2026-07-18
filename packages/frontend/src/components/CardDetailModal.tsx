@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import client from '../lib/hc';
-import { ApplicationCard, ApplicationStep } from '@my-app/shared';
+import { ApplicationCard, ApplicationStep, UpdateCardInput } from '@my-app/shared';
 import { X, Plus, Trash2, Check, AlertCircle } from 'lucide-react';
 
 interface CardDetailModalProps {
@@ -41,7 +41,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handlePatch = async (updates: any) => {
+  const handlePatch = async (updates: UpdateCardInput) => {
     setSavingStatus('saving');
     try {
       const res = await client.api.cards[':id'].$patch({
@@ -310,7 +310,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({
                     className="form-control"
                     style={{ padding: '6px 10px', fontSize: '0.875rem' }}
                     value={newStepResult}
-                    onChange={(e) => setNewStepResult(e.target.value as any)}
+                    onChange={(e) => setNewStepResult(e.target.value as ApplicationStep['result'])}
                   >
                     <option value="">結果待ち</option>
                     <option value="合格">合格</option>

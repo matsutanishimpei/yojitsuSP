@@ -3,18 +3,9 @@ import client from '../../lib/hc';
 import { Upload, Trash2, ArrowUpDown, CheckSquare, Square, Search, ChevronRight, ChevronDown } from 'lucide-react';
 import { ImportModal } from './StudentsList/ImportModal';
 import { ExpandedDetail } from './StudentsList/ExpandedDetail';
+import type { AdminStudentSummary, CardsByStatus } from '@my-app/shared';
 
-interface StudentStat {
-  student_id: string;
-  student_name: string;
-  parent_email: string | null;
-  is_completed: number;
-  active_count: number;
-  offer_count: number;
-  closed_count: number;
-  last_updated: string | null;
-  active_steps?: string | null;
-}
+type StudentStat = AdminStudentSummary;
 
 interface StudentsListProps {
   adminId: string;
@@ -38,7 +29,7 @@ export const StudentsList: React.FC<StudentsListProps> = ({ adminId, onSelectStu
 
   // Expanded student cards states
   const [expandedStudents, setExpandedStudents] = useState<Record<string, boolean>>({});
-  const [studentCards, setStudentCards] = useState<Record<string, any>>({});
+  const [studentCards, setStudentCards] = useState<Record<string, CardsByStatus>>({});
   const [expandedLoading, setExpandedLoading] = useState<Record<string, boolean>>({});
 
   const toggleStudentExpand = async (e: React.MouseEvent, studentId: string) => {
@@ -65,7 +56,7 @@ export const StudentsList: React.FC<StudentsListProps> = ({ adminId, onSelectStu
     }
   };
 
-  const getActiveCardsCount = (cardsGroup: any) => {
+  const getActiveCardsCount = (cardsGroup?: CardsByStatus) => {
     if (!cardsGroup) return 0;
     return (cardsGroup['選考中']?.length || 0) + (cardsGroup['内定']?.length || 0) + (cardsGroup['終了']?.length || 0);
   };
@@ -99,7 +90,7 @@ export const StudentsList: React.FC<StudentsListProps> = ({ adminId, onSelectStu
         query: { admin_id: adminId },
       });
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = await res.json() as { students: AdminStudentSummary[] };
         setStudents(data.students || []);
       }
     } catch (err) {

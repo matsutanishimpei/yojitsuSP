@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import client from '../../lib/hc';
 import { Eye } from 'lucide-react';
-
-interface MatrixItem {
-  company_name: string;
-  hojin_number: string | null;
-  status: string;
-  student_id: string;
-  student_name: string;
-}
+import type { AdminStudentSummary, CompanyMatrixItem } from '@my-app/shared';
 
 interface StudentStat {
   student_id: string;
@@ -21,7 +14,7 @@ interface CompanyMatrixProps {
 }
 
 export const CompanyMatrix: React.FC<CompanyMatrixProps> = ({ adminId, onSelectStudent }) => {
-  const [matrix, setMatrix] = useState<MatrixItem[]>([]);
+  const [matrix, setMatrix] = useState<CompanyMatrixItem[]>([]);
   const [students, setStudents] = useState<StudentStat[]>([]);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,11 +29,11 @@ export const CompanyMatrix: React.FC<CompanyMatrixProps> = ({ adminId, onSelectS
         ]);
 
         if (matrixRes.ok && studentsRes.ok) {
-          const matrixData = await matrixRes.json() as any;
-          const studentsData = await studentsRes.json() as any;
+          const matrixData = await matrixRes.json() as { matrix: CompanyMatrixItem[] };
+          const studentsData = await studentsRes.json() as { students: AdminStudentSummary[] };
           setMatrix(matrixData.matrix || []);
           setStudents(
-            studentsData.students.map((s: any) => ({
+            studentsData.students.map((s) => ({
               student_id: s.student_id,
               student_name: s.student_name,
             }))
