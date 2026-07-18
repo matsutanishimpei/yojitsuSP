@@ -66,7 +66,7 @@ export async function syncSourceToSp(env: Bindings) {
     await env.DB.batch([
       env.DB.prepare("UPDATE students SET source_deleted_at=CURRENT_TIMESTAMP WHERE source_managed=1"),
       env.DB.prepare("UPDATE applications SET source_deleted_at=CURRENT_TIMESTAMP WHERE id > 0"),
-      env.DB.prepare("UPDATE teachers SET source_deleted_at=CURRENT_TIMESTAMP"),
+      env.DB.prepare("UPDATE teachers SET source_deleted_at=CURRENT_TIMESTAMP WHERE source_managed=1"),
       env.DB.prepare(`INSERT INTO students
         (id, name, parent_birthday, parent_email, is_completed, last_login_at, source_managed, source_deleted_at, synced_at)
         SELECT id, name, parent_birthday, parent_email, is_completed, last_login_at, 1, NULL, CURRENT_TIMESTAMP
@@ -82,10 +82,14 @@ export async function syncSourceToSp(env: Bindings) {
           job_title=excluded.job_title, hojin_number=excluded.hojin_number, status=excluded.status,
           current_step=excluded.current_step, steps_json=excluded.steps_json, memo=excluded.memo,
           updated_at=excluded.updated_at, source_deleted_at=NULL, synced_at=CURRENT_TIMESTAMP`),
-      env.DB.prepare(`INSERT INTO teachers (id, name, password, last_login_at, source_deleted_at, synced_at)
-        SELECT id, name, password, last_login_at, NULL, CURRENT_TIMESTAMP FROM source_teachers_stage WHERE 1
+      env.DB.prepare(`INSERT INTO teachers
+        (id, name, password, last_login_at, source_deleted_at, synced_at, source_managed, is_active)
+        SELECT id, name, password, last_login_at, NULL, CURRENT_TIMESTAMP, 1,
+          CASE WHEN lower(id) IN ('admin', 'administrator', 'root') THEN 0 ELSE 1 END
+        FROM source_teachers_stage WHERE 1
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, password=excluded.password,
-          last_login_at=excluded.last_login_at, source_deleted_at=NULL, synced_at=CURRENT_TIMESTAMP`),
+          last_login_at=excluded.last_login_at, source_deleted_at=NULL, synced_at=CURRENT_TIMESTAMP,
+          source_managed=1`),
       env.DB.prepare(`UPDATE sync_runs SET completed_at=CURRENT_TIMESTAMP, status='success',
         students_count=?, applications_count=?, teachers_count=? WHERE id=?`)
         .bind(students.results.length, applications.results.length, teachers.results.length, runId),

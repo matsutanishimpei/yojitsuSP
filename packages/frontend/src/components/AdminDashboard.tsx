@@ -5,7 +5,8 @@ import { CompanyMatrix } from './admin/CompanyMatrix';
 import { EmailSender } from './admin/EmailSender';
 import { EmailSettings } from './admin/EmailSettings';
 import { TemplatesEditor } from './admin/TemplatesEditor';
-import { LogOut, Users, LayoutGrid, Mail } from 'lucide-react';
+import { TeachersManagement } from './admin/TeachersManagement';
+import { LogOut, Users, LayoutGrid, Mail, UserCog } from 'lucide-react';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import type { AdminStudentSummary } from '@my-app/shared';
 
@@ -21,7 +22,7 @@ interface StudentStat {
   is_completed: number;
 }
 
-type MainTab = 'students' | 'matrix' | 'email_mgmt';
+type MainTab = 'students' | 'matrix' | 'email_mgmt' | 'teachers';
 type EmailSubTab = 'send' | 'link' | 'templates';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminId, onLogout }) => {
@@ -35,6 +36,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminId, onLogou
     activeTab = 'matrix';
   } else if (location.pathname.startsWith('/admin/emails')) {
     activeTab = 'email_mgmt';
+  } else if (location.pathname.startsWith('/admin/teachers')) {
+    activeTab = 'teachers';
   }
 
   // Resolve active email subtab based on URL path
@@ -120,6 +123,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminId, onLogou
             <Mail size={16} />
             <span>メール管理</span>
           </div>
+          <div
+            className={`admin-tab ${activeTab === 'teachers' ? 'active' : ''}`}
+            onClick={() => navigate('/admin/teachers')}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+          >
+            <UserCog size={16} />
+            <span>教職員管理</span>
+          </div>
         </div>
 
         {/* Email Subtabs Navigation */}
@@ -163,6 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminId, onLogou
             <Route path="emails/send" element={<EmailSender adminId={adminId} studentsList={students} />} />
             <Route path="emails/link" element={<EmailSettings adminId={adminId} studentsList={students} onRefresh={fetchStudents} />} />
             <Route path="emails/templates" element={<TemplatesEditor adminId={adminId} />} />
+            <Route path="teachers" element={<TeachersManagement currentTeacherId={adminId} />} />
             <Route path="emails" element={<Navigate to="send" replace />} />
             <Route path="*" element={<Navigate to="students" replace />} />
           </Routes>

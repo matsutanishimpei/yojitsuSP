@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   loginSchema,
   adminLoginSchema,
+  createTeacherSchema,
+  updateTeacherAccessSchema,
   applicationStepSchema,
   createCardSchema,
   updateCardSchema,
@@ -13,6 +15,8 @@ import {
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
+export type CreateTeacherInput = z.infer<typeof createTeacherSchema>;
+export type UpdateTeacherAccessInput = z.infer<typeof updateTeacherAccessSchema>;
 export type ApplicationStep = z.infer<typeof applicationStepSchema>;
 export type CreateCardInput = z.infer<typeof createCardSchema>;
 export type UpdateCardInput = z.infer<typeof updateCardSchema>;
@@ -71,6 +75,15 @@ export interface CompanyMatrixItem {
 export interface CompanySearchResult {
   name: string;
   number: string;
+}
+
+export interface TeacherAccount {
+  id: string;
+  name: string;
+  source_managed: number;
+  is_active: number;
+  source_deleted_at: string | null;
+  synced_at: string | null;
 }
 
 export type CardsByStatus = Record<'選考中' | '内定' | '終了', ApplicationCard[]>;

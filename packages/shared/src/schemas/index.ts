@@ -11,6 +11,18 @@ export const adminLoginSchema = z.object({
   password: z.string().min(1, 'パスワードは必須です').max(256),
 });
 
+export const createTeacherSchema = z.object({
+  id: z.string().trim().min(3, '教員IDは3文字以上で入力してください').max(64)
+    .regex(/^[A-Za-z0-9._-]+$/, '教員IDは半角英数字と . _ - だけを使用してください')
+    .refine((id) => !['admin', 'administrator', 'root'].includes(id.toLowerCase()), '共通管理者IDは使用できません'),
+  name: z.string().trim().min(1, '氏名は必須です').max(100),
+  temporary_password: z.string().min(12, '初期パスワードは12文字以上にしてください').max(256),
+});
+
+export const updateTeacherAccessSchema = z.object({
+  is_active: z.boolean(),
+});
+
 // Selection Step Schema
 export const applicationStepSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付は YYYY-MM-DD 形式にしてください'),

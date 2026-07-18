@@ -72,6 +72,7 @@ npx wrangler d1 migrations apply yojitsu-sp-db --remote --config packages/backen
 - [現行仕様](doc/specification.md)
 - [API仕様](doc/api.md)
 - [選考状態・ステップ状態仕様](doc/state-machine.md)
+- [教職員アカウント管理仕様](doc/teacher-account-management.md)
 - [DB移行・同期・復旧](doc/sp-database-migration.md)
 - [実運用テストチェックリスト](doc/production-test-checklist.md)
 - [リモートデプロイ設定ガイド](リモートデプロイ設定ガイド.md)

@@ -23,6 +23,9 @@ const result = run([
   `SELECT CASE
     WHEN a.memo='appメモ2' AND COALESCE(o.memo, a.memo)='SPメモ'
       AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='sp_teacher_credentials')
+      AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='teacher_account_events')
+      AND EXISTS (SELECT 1 FROM teachers WHERE id='SP_TEACHER_TEST' AND source_managed=0
+        AND is_active=1 AND source_deleted_at IS NULL)
     THEN 'D1_INTEGRATION_OK' ELSE 'D1_INTEGRATION_FAILED' END AS result
    FROM applications a LEFT JOIN application_overrides o ON o.application_id=a.id WHERE a.id=900001`,
 ]);

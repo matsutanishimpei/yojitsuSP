@@ -13,6 +13,8 @@ import { searchCompanies } from './company-search';
 import {
   loginSchema,
   adminLoginSchema,
+  createTeacherSchema,
+  updateTeacherAccessSchema,
   createCardSchema,
   updateCardSchema,
   updateStudentSchema,
@@ -20,7 +22,7 @@ import {
   saveTemplatesSchema,
   sendEmailSchema,
 } from '@my-app/shared';
-import type { AdminStudentSummary, ApplicationCard, CompanyMatrixItem } from '@my-app/shared';
+import type { AdminStudentSummary, ApplicationCard, CompanyMatrixItem, TeacherAccount } from '@my-app/shared';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath('/api');
 
@@ -93,7 +95,7 @@ const routes = app
       return c.json({ success: false, error: { message: 'ログイン試行回数が上限に達しました。15分後に再度お試しください' } }, 429);
     }
     const teacher = await c.env.DB.prepare(
-      'SELECT id, name, password FROM teachers WHERE id = ? AND source_deleted_at IS NULL'
+      'SELECT id, name, password FROM teachers WHERE id = ? AND is_active = 1 AND source_deleted_at IS NULL'
     ).bind(id.trim()).first<{ id: string; name: string; password: string }>();
     if (!teacher) {
       await recordLoginFailure(c.env.DB, attemptKey);
@@ -155,6 +157,83 @@ const routes = app
   .get('/search', async (c) => {
     const name = c.req.query('name') || '';
     return c.json(await searchCompanies(name, c.env.GBIZINFO_API_KEY));
+  })
+
+  .get('/admin/teachers', async (c) => {
+    const { results } = await c.env.DB.prepare(`SELECT id, name, source_managed, is_active,
+      source_deleted_at, synced_at FROM teachers ORDER BY is_active DESC, name, id`).all<TeacherAccount>();
+    return c.json({ teachers: results || [] });
+  })
+
+  .post('/admin/teachers', zValidator('json', createTeacherSchema), async (c) => {
+    const auth = c.get('auth');
+    const { id, name, temporary_password: temporaryPassword } = c.req.valid('json');
+    const existing = await c.env.DB.prepare('SELECT id FROM teachers WHERE lower(id)=lower(?)').bind(id).first();
+    if (existing) {
+      return c.json({ success: false, error: { message: '同じ教員IDが既に存在します' } }, 409);
+    }
+    const credential = await createStrongCredential(temporaryPassword);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO teachers
+        (id, name, password, source_managed, is_active, created_by, source_deleted_at, synced_at)
+        VALUES (?, ?, '', 0, 1, ?, NULL, CURRENT_TIMESTAMP)`).bind(id, name, auth.sub),
+      c.env.DB.prepare(`INSERT INTO sp_teacher_credentials
+        (teacher_id, salt, iterations, password_hash) VALUES (?, ?, ?, ?)`)
+        .bind(id, credential.salt, credential.iterations, credential.passwordHash),
+      c.env.DB.prepare(`INSERT INTO teacher_account_events
+        (teacher_id, action, actor_teacher_id) VALUES (?, 'created', ?)`).bind(id, auth.sub),
+    ]);
+    return c.json({ success: true, id }, 201);
+  })
+
+  .patch('/admin/teachers/:id', zValidator('json', updateTeacherAccessSchema), async (c) => {
+    const auth = c.get('auth');
+    const id = c.req.param('id');
+    const { is_active: isActive } = c.req.valid('json');
+    const teacher = await c.env.DB.prepare('SELECT id, is_active FROM teachers WHERE id=?')
+      .bind(id).first<{ id: string; is_active: number }>();
+    if (!teacher) return c.json({ success: false, error: { message: '教職員が見つかりません' } }, 404);
+    if (!isActive && id === auth.sub) {
+      return c.json({ success: false, error: { message: 'ログイン中の自分自身は無効化できません' } }, 409);
+    }
+    if (!isActive) {
+      const active = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM teachers
+        WHERE is_active=1 AND source_deleted_at IS NULL`).first<{ count: number }>();
+      if ((active?.count || 0) <= 1) {
+        return c.json({ success: false, error: { message: '最後の有効な教職員は無効化できません' } }, 409);
+      }
+    }
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE teachers SET is_active=? WHERE id=?').bind(isActive ? 1 : 0, id),
+      c.env.DB.prepare(`INSERT INTO teacher_account_events
+        (teacher_id, action, actor_teacher_id) VALUES (?, ?, ?)`)
+        .bind(id, isActive ? 'enabled' : 'disabled', auth.sub),
+    ]);
+    return c.json({ success: true });
+  })
+
+  .delete('/admin/teachers/:id', async (c) => {
+    const auth = c.get('auth');
+    const id = c.req.param('id');
+    if (id === auth.sub) {
+      return c.json({ success: false, error: { message: 'ログイン中の自分自身は削除できません' } }, 409);
+    }
+    const teacher = await c.env.DB.prepare('SELECT id, is_active FROM teachers WHERE id=?')
+      .bind(id).first<{ id: string; is_active: number }>();
+    if (!teacher) return c.json({ success: false, error: { message: '教職員が見つかりません' } }, 404);
+    if (teacher.is_active) {
+      const active = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM teachers
+        WHERE is_active=1 AND source_deleted_at IS NULL`).first<{ count: number }>();
+      if ((active?.count || 0) <= 1) {
+        return c.json({ success: false, error: { message: '最後の有効な教職員は削除できません' } }, 409);
+      }
+    }
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE teachers SET is_active=0 WHERE id=?').bind(id),
+      c.env.DB.prepare(`INSERT INTO teacher_account_events
+        (teacher_id, action, actor_teacher_id) VALUES (?, 'disabled', ?)`).bind(id, auth.sub),
+    ]);
+    return c.json({ success: true });
   })
 
   // 3.3 Kanban Card Management
