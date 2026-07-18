@@ -4,6 +4,9 @@
 
 ## 本番投入前（未完了）
 
+- [ ] `doc/state-machine.md` の確定仕様に合わせて状態管理を実装する
+- [ ] 既存ステップ結果の移行と状態変更履歴migrationを追加する
+- [ ] 状態遷移・例外・再同期保持のテストを追加する
 - [x] Cloudflare D1の不要DBを管理者判断で整理する
 - [x] `yojitsu-sp-db` を新規作成する（2026-07-18、APAC）
 - [x] `packages/backend/wrangler.toml` の安全用ダミーIDをSP DBの実IDへ置き換える
